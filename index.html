@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c; /* Dark background */
+            color: #e2e8f0; /* Light text */
+            margin: 0;
+            overflow: hidden; /* Prevent body scroll */
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* Main container for app layout */
+        .app-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar styling */
+        .sidebar {
+            width: 0; /* Hidden by default */
+            min-width: 0;
+            background-color: #2d3748; /* Darker grey */
+            transition: width 0.3s ease-in-out, min-width 0.3s ease-in-out, transform 0.8s ease-out;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-top: 1rem;
+            flex-shrink: 0; /* Prevent shrinking */
+            transform: translateX(-100%); /* Start off-screen to the left */
+            opacity: 0;
+        }
+
+        .sidebar.open {
+            width: 280px; /* Open width */
+            min-width: 280px;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+
+        .sidebar.slide-in {
+            transform: translateX(0%); /* Slide in */
+            opacity: 1;
+        }
+
+        /* Main content area */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: margin-left 0.3s ease-in-out;
+            overflow: hidden;
+        }
+
+        /* Video Player Styling */
+        #videoPlayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Ensures video covers the area */
+            z-index: 1; /* Behind canvas */
+            display: none; /* Hidden by default */
+        }
+        #videoPlayer.show {
+            display: block;
+        }
+
+
+        /* Canvas styling */
+        canvas {
+            display: block;
+            /* Subtler gradient background: blue, pink, and red */
+            background: radial-gradient(circle at center, #2a4365 0%, #800020 50%, #4a0000 100%);
+            width: 100%;
+            height: 100%;
+            z-index: 2; /* Ensure canvas is on top of video */
+        }
+        canvas.hidden {
+            display: none; /* Hide canvas when not needed */
+        }
+
+        /* Not Video Message Styling */
+        .not-video-message {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black; /* Black screen */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 1.5rem;
+            text-align: center;
+            z-index: 3; /* Above canvas and video */
+        }
+        .not-video-message.hidden {
+            display: none;
+        }
+
+
+        /* Sidebar toggle button */
+        .sidebar-toggle-button {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            z-index: 10; /* Ensure it's above other content */
+            background-color: #4a5568;
+            color: #e2e8f0;
+            border: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+        }
+
+        .sidebar-toggle-button:hover {
+            background-color: #6a768c;
+        }
+
+        /* Queue list styling */
+        .queue-list li {
+            padding: 0.5rem 0;
+            cursor: pointer;
+            border-bottom: 1px solid #4a5568;
+            transition: background-color 0.2s ease-in-out;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .queue-list li:last-child {
+            border-bottom: none;
+        }
+
+        .queue-list li:hover {
+            background-color: #4a5568;
+            border-radius: 0.25rem;
+        }
+
+        .queue-list li.active {
+            background-color: #63b3ed; /* Tailwind blue-400 */
+            color: #1a202c;
+            font-weight: bold;
+            border-radius: 0.25rem;
+        }
+
+        /* Hide elements when sidebar is closed */
+        .sidebar:not(.open) .sidebar-content > *:not(.sidebar-toggle-button) {
+            display: none;
+        }
+        /* Ensure debug button is hidden if sidebar is closed but debug mode isn't active */
+        .sidebar:not(.open) #debugModeButton {
+            display: none;
+        }
+
+        /* Audio controls - now at the bottom */
+        .audio-controls {
+            position: absolute;
+            bottom: 1rem; /* Moved to bottom */
+            left: 50%;
+            transform: translateX(-50%) translateY(100%); /* Start off-screen below */
+            opacity: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 0.75rem 1.5rem;
+            border-radius: 1rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            z-index: 5;
+            width: 90%; /* Make it longer */
+            max-width: 800px; /* Limit max width */
+            justify-content: space-between; /* Space out items */
+            transition: transform 0.8s ease-out, opacity 0.8s ease-out;
+        }
+
+        .audio-controls.slide-in {
+            transform: translateX(-50%) translateY(0%); /* Slide in */
+            opacity: 1;
+        }
+
+
+        .audio-controls button {
+            background-color: #63b3ed;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            flex-shrink: 0; /* Prevent button from shrinking */
+        }
+
+        .audio-controls button:hover {
+            background-color: #4299e1;
+        }
+
+        .audio-controls .volume-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-grow: 0; /* Don't let it grow */
+            flex-shrink: 0;
+            width: 150px; /* Fixed width for volume */
+        }
+
+        .audio-controls input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 8px;
+            background: #d3d3d3;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .audio-controls input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #63b3ed;
+            cursor: pointer;
+        }
+
+        .audio-controls input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #63b3ed;
+            cursor: pointer;
+        }
+
+        /* Timeline specific styling */
+        .audio-controls .timeline {
+            flex-grow: 1; /* Allow timeline to take available space */
+            margin: 0 1rem; /* Spacing from other elements */
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .audio-controls .timeline-current,
+        .audio-controls .timeline-duration {
+            font-size: 0.85rem;
+            color: #a0aec0; /* Gray color */
+            flex-shrink: 0; /* Prevent time displays from shrinking */
+        }
+
+        /* Song Info Display (now inside audio-controls) */
+        .audio-controls .song-info {
+            position: static; /* Remove absolute positioning */
+            transform: none; /* Remove transform */
+            background-color: transparent; /* No background for this element */
+            padding: 0;
+            margin-right: 1rem; /* Space from play button */
+            flex-shrink: 0;
+            text-align: left; /* Align text to left */
+            min-width: 120px; /* Give it some space */
+        }
+
+        .audio-controls .song-info h3 {
+            font-size: 1rem; /* Smaller font size to fit */
+            font-weight: 600;
+            color: #a78bfa;
+            margin-bottom: 0; /* Remove extra margin */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Hide song info when not playing */
+        .song-info.hidden {
+            display: none;
+        }
+
+        /* Message box styling */
+        .message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #2d3748;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .message-box.show {
+            display: flex;
+        }
+
+        .message-box button {
+            background-color: #63b3ed;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .message-box button:hover {
+            background-color: #4299e1;
+        }
+
+        /* Error Screen Styling */
+        .error-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, rgba(255, 0, 0, 0.4), rgba(100, 0, 0, 0.8)), url('https://placehold.co/1920x1080/4a0000/ffffff?text=ERROR') no-repeat center center / cover; /* Red, foggy, ambient */
+            background-blend-mode: multiply; /* Blend gradient with image */
+            backdrop-filter: blur(5px); /* Optional blur effect */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000; /* Ensure it's on top */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease-in-out, visibility 0.5s ease-in-out;
+        }
+
+        .error-screen.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .error-content {
+            background-color: rgba(0, 0, 0, 0.8);
+            border: 2px solid #ff0000;
+            padding: 2rem;
+            border-radius: 1rem;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.7);
+            max-width: 500px;
+            color: #e2e8f0;
+        }
+
+        .error-content p {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1.5rem;
+            color: #ffcccc;
+        }
+
+        .error-content button {
+            background-color: #ff0000;
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: background-color 0.3s;
+        }
+
+        .error-content button:hover {
+            background-color: #cc0000;
+        }
+
+        /* Tutorial Overlay */
+        #tutorialOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 3000; /* Above everything else */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            text-align: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease-in-out, visibility 0.5s ease-in-out;
+        }
+
+        #tutorialOverlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .tutorial-content {
+            background-color: #2d3748;
+            padding: 2rem;
+            border-radius: 1rem;
+            max-width: 600px;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            position: relative;
+        }
+
+        .tutorial-step {
+            display: none; /* Hidden by default */
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        .tutorial-step.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .tutorial-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+        }
+
+        .tutorial-buttons button {
+            background-color: #63b3ed;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 1rem;
+        }
+
+        .tutorial-buttons button:hover {
+            background-color: #4299e1;
+        }
+
+        .tutorial-buttons #skipTutorialButton {
+            background-color: #e53e3e; /* Red for skip */
+        }
+        .tutorial-buttons #skipTutorialButton:hover {
+            background-color: #c53030;
+        }
+
+        /* Background Shake Animation */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        .main-content.shake-active canvas {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
+            perspective: 1000px;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .sidebar.open {
+                width: 200px;
+                min-width: 200px;
+            }
+            .sidebar-toggle-button {
+                top: 0.5rem;
+                left: 0.5rem;
+            }
+            .audio-controls {
+                flex-direction: row; /* Keep row for small screens too */
+                padding: 0.5rem 1rem;
+                gap: 0.5rem;
+                bottom: 0.5rem; /* Adjust for smaller screens */
+                width: 95%; /* Wider on small screens */
+            }
+            .song-info {
+                /* No specific bottom adjustment needed as it's inline */
+                padding: 0; /* Remove padding */
+            }
+            .song-info h3 {
+                font-size: 0.8rem; /* Smaller font for mobile */
+            }
+            .audio-controls .volume-container {
+                width: 100px; /* Smaller volume bar on mobile */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="errorScreen" class="error-screen hidden">
+        <div class="error-content">
+            <p id="errorMessage"></p>
+            <button id="errorScreenCloseButton">OK</button>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <div id="sidebar" class="sidebar rounded-r-xl shadow-lg">
+            <div class="sidebar-content p-4">
+                <h2 class="text-2xl font-bold mb-6 text-blue-300">Visualizer Menu</h2>
+
+                <div class="mb-6">
+                    <label for="audioFile" class="block text-sm font-medium text-gray-300 mb-2">Upload Audio/Video File</label>
+                    <input type="file" id="audioFile" accept="audio/*,video/mp4" class="block w-full text-sm text-gray-400
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-500 file:text-white
+                        hover:file:bg-blue-600 cursor-pointer">
+                </div>
+
+                <div class="mb-6">
+                    <h3 class="text-xl font-semibold mb-3 text-blue-200">Queue</h3>
+                    <ul id="queueList" class="queue-list text-gray-300">
+                        <!-- Songs will be dynamically added here -->
+                    </ul>
+                </div>
+
+                <!-- Visualizer Customization Section -->
+                <div class="mb-6">
+                    <h3 class="text-xl font-semibold mb-3 text-blue-200">Visualizer Customization</h3>
+
+                    <div class="mb-4">
+                        <label for="backgroundFile" class="block text-sm font-medium text-gray-300 mb-2">Upload Background Image</label>
+                        <input type="file" id="backgroundFile" accept="image/*" class="block w-full text-sm text-gray-400
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-full file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-purple-500 file:text-white
+                            hover:file:bg-purple-600 cursor-pointer">
+                        <button id="clearBackgroundButton" class="mt-2 w-full py-1 px-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition text-sm">Clear Background Image</button>
+                    </div>
+
+                    <div class="text-gray-300 mb-4">
+                        <p class="mb-2">Bar Visualizer Colors:</p>
+                        <div class="flex items-center space-x-2 mb-2">
+                            <label for="barColor1" class="text-sm">Start:</label>
+                            <input type="color" id="barColor1" value="#63b3ed" class="w-10 h-10 rounded-md cursor-pointer">
+                            <label for="barColor2" class="text-sm">End:</label>
+                            <input type="color" id="barColor2" value="#a78bfa" class="w-10 h-10 rounded-md cursor-pointer">
+                        </div>
+                    </div>
+
+                    <div class="text-gray-300">
+                        <p class="mb-2">Circle Visualizer Colors:</p>
+                        <div class="flex items-center space-x-2 mb-2">
+                            <label for="circleColor1" class="text-sm">Inner:</label>
+                            <input type="color" id="circleColor1" value="#FF0000" class="w-10 h-10 rounded-md cursor-pointer">
+                        </div>
+                        <div class="flex items-center space-x-2 mb-2">
+                            <label for="circleColor2" class="text-sm">Middle:</label>
+                            <input type="color" id="circleColor2" value="#FF69B4" class="w-10 h-10 rounded-md cursor-pointer">
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label for="circleColor3" class="text-sm">Outer:</label>
+                            <input type="color" id="circleColor3" value="#63b3ed" class="w-10 h-10 rounded-md cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <h3 class="text-xl font-semibold mb-3 text-blue-200">Settings</h3>
+                    <div class="text-gray-300">
+                        <p class="mb-2">Visualizer Type:</p>
+                        <div class="flex flex-col space-y-2 mb-4">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="visualizerStyle" value="bars" class="form-radio text-blue-500" checked>
+                                <span class="ml-2">Bars</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="visualizerStyle" value="circles" class="form-radio text-blue-500">
+                                <span class="ml-2">Circles</span>
+                            </label>
+                        </div>
+
+                        <p class="mb-2">Display Mode:</p>
+                        <div class="flex flex-col space-y-2">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="displayMode" value="visualizer" class="form-radio text-blue-500" checked>
+                                <span class="ml-2">Visualizer Only</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="displayMode" value="video" class="form-radio text-blue-500">
+                                <span class="ml-2">Video Mode (MP4)</span>
+                            </label>
+                        </div>
+                        <p class="text-sm text-gray-400 mt-4">More settings coming soon!</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-xl font-semibold mb-3 text-blue-200">Help</h3>
+                    <div class="text-gray-300 text-sm">
+                        <p class="mb-2">Upload an audio or video file to start visualizing.</p>
+                        <p class="mb-2">Click on songs in the queue to switch playback.</p>
+                        <p>Adjust volume using the controls below.</p>
+                    </div>
+                </div>
+
+                <button id="debugModeButton" class="hidden mt-6 w-full py-2 px-4 bg-red-600 text-white rounded-md hover:bg-red-700 transition">DEBUG</button>
+
+                <div id="debugMenu" class="hidden mt-6 p-4 bg-gray-700 rounded-lg">
+                    <h3 class="text-xl font-semibold mb-3 text-red-300">Debug Options</h3>
+                    <div class="mb-4">
+                        <label for="audioBitrate" class="block text-sm font-medium text-gray-300 mb-2">Audio Bitrate (kbps):</label>
+                        <input type="number" id="audioBitrate" value="128" min="32" max="320" class="w-full p-2 rounded-md bg-gray-800 text-white border border-gray-600">
+                        <p class="text-xs text-gray-400 mt-1">Note: This is a simulated setting for display purposes.</p>
+                    </div>
+                    <button id="resetDataButton" class="w-full py-2 px-4 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition mb-2">Reset ALL Data</button>
+                    <button id="showErrorSelectionButton" class="w-full py-2 px-4 bg-red-600 text-white rounded-md hover:bg-red-700 transition">Test Error Screen</button>
+                </div>
+
+                <div id="errorSelectionMenu" class="hidden mt-6 p-4 bg-gray-700 rounded-lg">
+                    <h3 class="text-xl font-semibold mb-3 text-red-300">Select Error Screen</h3>
+                    <button id="showError010Button" class="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600 transition mb-2">Error Code: 010</button>
+                    <button id="backToDebugMenuButton" class="w-full py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition">Back to Debug</button>
+                </div>
+
+                <!-- App Version Text -->
+                <div class="text-center text-gray-500 text-xs mt-8">
+                    App Ver. A 1.1.2
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <button id="sidebarToggleButton" class="sidebar-toggle-button">
+                <span id="toggleIcon">☰</span>
+            </button>
+
+            <video id="videoPlayer" class="absolute top-0 left-0 w-full h-full object-cover" muted></video>
+            <canvas id="visualizerCanvas" class="rounded-xl shadow-2xl"></canvas>
+            <div id="notVideoMessage" class="not-video-message hidden">
+                <p>Not a video file, please choose a supported video format</p>
+            </div>
+
+            <div class="audio-controls rounded-full shadow-lg">
+                <!-- Song Info Display (now inside audio-controls) -->
+                <div id="songInfo" class="song-info hidden">
+                    <h3 id="currentSongTitle"></h3>
+                </div>
+                <button id="playPauseButton">Play</button>
+                <div class="timeline">
+                    <span id="currentTime" class="timeline-current">0:00</span>
+                    <input type="range" id="timelineControl" min="0" max="0" step="1" value="0">
+                    <span id="durationTime" class="timeline-duration">0:00</span>
+                </div>
+                <div class="volume-container">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-volume">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    </svg>
+                    <input type="range" id="volumeControl" min="0" max="1" step="0.01" value="0.7">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="messageBox" class="message-box rounded-xl">
+        <p id="messageText"></p>
+        <button id="messageBoxCloseButton">OK</button>
+    </div>
+
+    <!-- Tutorial Overlay -->
+    <div id="tutorialOverlay">
+        <div class="tutorial-content">
+            <img id="tutorialCat" alt="Owl Guide" class="w-24 h-24 mx-auto mb-4"
+                 src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3C!-- Body --%3E%3Cpath d='M100 20 C40 20 20 100 20 150 C20 180 80 190 100 190 C120 190 180 180 180 150 C180 100 160 20 100 20 Z' fill='%23333333'/%3E%3C!-- Left Wing --%3E%3Cpath d='M20 100 Q10 70 50 50 Q70 70 70 100 Q60 130 20 100 Z' fill='%23555555'/%3E%3C!-- Right Wing --%3E%3Cpath d='M180 100 Q190 70 150 50 Q130 70 130 100 Q140 130 180 100 Z' fill='%23555555'/%3E%3C!-- Left Eye --%3E%3Ccircle cx='70' cy='70' r='20' fill='%23FFFFFF'/%3E%3Ccircle cx='70' cy='70' r='10' fill='%23000000'/%3E%3C!-- Right Eye --%3E%3Ccircle cx='130' cy='70' r='20' fill='%23FFFFFF'/%3E%3Ccircle cx='130' cy='70' r='10' fill='%23000000'/%3E%3C!-- Beak --%3E%3Cpath d='M100 90 L90 110 L110 110 Z' fill='%23FFA500'/%3E%3C!-- Feet --%3E%3Cpath d='M80 170 Q70 180 85 185 Q100 180 90 170 Z' fill='%23FFA500'/%3E%3Cpath d='M120 170 Q130 180 115 185 Q100 180 110 170 Z' fill='%23FFA500'/%3E%3C!-- Ear Tufts (simplified) --%3E%3Cpath d='M60 20 Q70 0 80 20 Z' fill='%23333333'/%3E%3Cpath d='M120 20 Q130 0 140 20 Z' fill='%23333333'/%3E%3C/svg%3E"
+                 onerror="
+                    this.onerror=null;
+                    this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect x=\'0\' y=\'0\' width=\'100\' height=\'100\' fill=\'none\' stroke=\'red\' stroke-width=\'2\'/%3E%3C!-- Outline of body --%3E%3Cpath d=\'M50 10 C20 10 10 50 10 75 C10 90 40 95 50 95 C60 95 90 90 90 75 C90 50 80 10 50 10 Z\' fill=\'none\' stroke=\'%23FFFFFF\' stroke-width=\'2\'/%3E%3C!-- Outline of left wing --%3E%3Cpath d=\'M10 50 Q5 35 25 25 Q35 35 35 50 Q30 65 10 50 Z\' fill=\'none\' stroke=\'%23FFFFFF\' stroke-width=\'1\'/%3E%3C!-- Outline of right wing --%3E%3Cpath d=\'M90 50 Q95 35 75 25 Q65 35 65 50 Q70 65 90 50 Z\' fill=\'none\' stroke=\'%23FFFFFF\' stroke-width=\'1\'/%3E%3C!-- Outline of left eye --%3E%3Ccircle cx=\'35\' cy=\'35\' r=\'10\' fill=\'none\' stroke=\'%23FFFFFF\' stroke-width=\'1\'/%3E%3C!-- Outline of right eye --%3E%3Ccircle cx=\'65\' cy=\'35\' r=\'10\' fill=\'none\' stroke=\'%23FFFFFF\' stroke-width=\'1\'/%3E%3C!-- Outline of beak --%3E%3Cpath d=\'M50 45 L45 55 L55 55 Z\' fill=\'none\' stroke=\'%23FFFFFF\' stroke-width=\'1\'/%3E%3C/svg%3E';
+                    document.getElementById('tutorialText1').textContent = 'Hi there! Sadly Ruby couldn\'t make it, so he left you this message on how to use the app. This app lets you visualize your audio and video files with cool animations.';
+                    console.error('Failed to load owl SVG, displaying fallback and updated message.');
+                 ">
+            <div id="tutorialStep1" class="tutorial-step active">
+                <h2 id="tutorialTitle1" class="text-3xl font-bold mb-4 text-blue-300">Welcome to Music Visualizer!</h2>
+                <p id="tutorialText1" class="text-lg">Hi there! I'm your friendly Owl Guide. This app lets you visualize your audio and video files with cool animations.</p>
+            </div>
+            <div id="tutorialStep2" class="tutorial-step">
+                <h2 class="text-3xl font-bold mb-4 text-blue-300">Upload Your Media</h2>
+                <p class="text-lg">To get started, use the "Upload Audio/Video File" button in the sidebar to add your favorite songs or MP4 videos.</p>
+                <p class="text-sm text-gray-400 mt-2">(Click the ☰ icon to open the sidebar)</p>
+            </div>
+            <div id="tutorialStep3" class="tutorial-step">
+                <h2 class="text-3xl font-bold mb-4 text-blue-300">Customize Your Experience</h2>
+                <p class="text-lg">In the sidebar, you can choose different visualizer styles (bars or circles) and even upload your own background image.</p>
+            </div>
+            <div id="tutorialStep4" class="tutorial-step">
+                <h2 class="text-3xl font-bold mb-4 text-blue-300">Video Mode Fun!</h2>
+                <p class="text-lg">Want to watch videos? Switch to "Video Mode" in settings to play MP4 files. The visualizer will disappear for a clear view!</p>
+            </div>
+            <div id="tutorialStep5" class="tutorial-step">
+                <h2 class="text-3xl font-bold mb-4 text-blue-300">Ready to Rock!</h2>
+                <p class="text-lg">You're all set! I hope you enjoy creating your unique music visualization experience. Let's get started!</p>
+            </div>
+            <div class="tutorial-buttons">
+                <button id="skipTutorialButton">Skip Tutorial</button>
+                <button id="nextTutorialButton">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for audio context and visualizer
+        let audioContext;
+        let analyser;
+        let source;
+        let currentMediaElement; // Will hold either audioElement or videoPlayer
+        let canvas;
+        let canvasCtx;
+        let dataArray;
+        let bufferLength;
+        let animationFrameId;
+        let visualizerStyle = 'bars'; // Default visualizer style
+        let displayMode = 'visualizer'; // Default display mode
+        let backgroundParticles = []; // Array to hold background particles
+        let uploadedBackgroundImage = null; // To store the uploaded background image
+        let audioControls; // Declared globally
+
+        // Store references to event listener functions to allow removal
+        let currentLoadedMetadataListener = null;
+        let currentTimeUpdateListener = null;
+        let currentEndedListener = null;
+        let currentCanPlayThroughListener = null;
+        let currentMediaErrorListener = null;
+
+
+        // Array to store uploaded audio files (name, URL, title, isVideo)
+        const uploadedFiles = [];
+        let currentPlayingIndex = -1;
+
+        // DOM Elements
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggleButton = document.getElementById('sidebarToggleButton');
+        const toggleIcon = document.getElementById('toggleIcon');
+        const audioFileInput = document.getElementById('audioFile');
+        const queueList = document.getElementById('queueList');
+        const playPauseButton = document.getElementById('playPauseButton');
+        const volumeControl = document.getElementById('volumeControl');
+        const timelineControl = document.getElementById('timelineControl');
+        const currentTimeElement = document.getElementById('currentTime');
+        const durationTimeElement = document.getElementById('durationTime');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText'); // Corrected
+        const messageBoxCloseButton = document.getElementById('messageBoxCloseButton');
+        const currentSongTitleElement = document.getElementById('currentSongTitle');
+        const songInfoElement = document.getElementById('songInfo'); // Get the song info container
+        const visualizerStyleRadios = document.querySelectorAll('input[name="visualizerStyle"]');
+
+        // New DOM Elements for Error Screen and Debug Mode
+        const errorScreen = document.getElementById('errorScreen');
+        const errorMessageElement = document.getElementById('errorMessage');
+        const errorScreenCloseButton = document.getElementById('errorScreenCloseButton');
+        const debugModeButton = document.getElementById('debugModeButton');
+        const debugMenu = document.getElementById('debugMenu');
+        const resetDataButton = document.getElementById('resetDataButton');
+        const showErrorSelectionButton = document.getElementById('showErrorSelectionButton');
+        const audioBitrateInput = document.getElementById('audioBitrate');
+
+        // New DOM Elements for Error Selection Menu
+        const errorSelectionMenu = document.getElementById('errorSelectionMenu');
+        const showError010Button = document.getElementById('showError010Button');
+        const backToDebugMenuButton = document.getElementById('backToDebugMenuButton');
+
+        // New DOM Elements for Visualizer Customization
+        const backgroundFileInput = document.getElementById('backgroundFile');
+        const clearBackgroundButton = document.getElementById('clearBackgroundButton');
+        const barColor1Input = document.getElementById('barColor1');
+        const barColor2Input = document.getElementById('barColor2');
+        const circleColor1Input = document.getElementById('circleColor1');
+        const circleColor2Input = document.getElementById('circleColor2');
+        const circleColor3Input = document.getElementById('circleColor3');
+
+        // New DOM Elements for Video Mode
+        const videoPlayer = document.getElementById('videoPlayer');
+        const displayModeRadios = document.querySelectorAll('input[name="displayMode"]');
+        const notVideoMessageElement = document.getElementById('notVideoMessage'); // New element
+
+        // Tutorial Elements
+        const tutorialOverlay = document.getElementById('tutorialOverlay');
+        const tutorialSteps = document.querySelectorAll('.tutorial-step');
+        const nextTutorialButton = document.getElementById('nextTutorialButton');
+        const skipTutorialButton = document.getElementById('skipTutorialButton');
+        let currentTutorialStepIndex = 0;
+
+
+        let sidebarToggleClickCount = 0;
+        const DEBUG_ACTIVATION_CLICKS = 5;
+
+
+        /**
+         * Formats time in seconds to MM:SS format.
+         * @param {number} seconds - The time in seconds.
+         * @returns {string} Formatted time string.
+         */
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+        }
+
+        /**
+         * Displays a custom message box.
+         * @param {string} message - The message to display.
+         */
+        function showMessageBox(message) {
+            messageText.textContent = message;
+            messageBox.classList.add('show');
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessageBox() {
+            messageBox.classList.remove('show');
+        }
+
+        /**
+         * Displays the creepy error screen.
+         * @param {string} message - The error message to display.
+         * @param {string} errorCode - The error code.
+         */
+        function showErrorScreen(message, errorCode) {
+            errorMessageElement.innerHTML = `${message}<br>ERROR CODE: ${errorCode}`;
+            errorScreen.classList.add('show');
+            // Stop any media playback when error screen appears
+            if (currentMediaElement) {
+                currentMediaElement.pause();
+                playPauseButton.textContent = 'Play';
+                cancelAnimationFrame(animationFrameId);
+            }
+        }
+
+        /**
+         * Hides the creepy error screen.
+         */
+        function hideErrorScreen() {
+            errorScreen.classList.remove('show');
+        }
+
+        /**
+         * Initializes the audio context and analyser.
+         */
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048; // Fast Fourier Transform size
+                bufferLength = analyser.frequencyBinCount; // Number of data points
+                dataArray = new Uint8Array(bufferLength); // Array to hold frequency data
+            }
+        }
+
+        /**
+         * Loads and plays an audio or video file from a given URL.
+         * @param {string} mediaUrl - The URL of the media file.
+         * @param {number} index - The index of the media in the uploadedFiles array.
+         */
+        function loadAndPlayAudio(mediaUrl, index) {
+            initAudioContext();
+
+            // 1. Clean up previous media element and its listeners
+            if (currentMediaElement) {
+                currentMediaElement.pause();
+                if (source) {
+                    source.disconnect();
+                }
+                // Remove existing listeners
+                if (currentLoadedMetadataListener) currentMediaElement.removeEventListener('loadedmetadata', currentLoadedMetadataListener);
+                if (currentTimeUpdateListener) currentMediaElement.removeEventListener('timeupdate', currentTimeUpdateListener);
+                if (currentEndedListener) currentMediaElement.removeEventListener('ended', currentEndedListener);
+                if (currentCanPlayThroughListener) currentMediaElement.removeEventListener('canplaythrough', currentCanPlayThroughListener);
+                if (currentMediaErrorListener) currentMediaElement.removeEventListener('error', currentMediaErrorListener);
+            }
+            cancelAnimationFrame(animationFrameId); // Stop previous animation
+
+            const file = uploadedFiles[index];
+            const isVideoFile = file.isVideo; // Use the isVideo flag from the file object
+
+            if (isVideoFile) {
+                currentMediaElement = videoPlayer;
+                videoPlayer.src = mediaUrl;
+                videoPlayer.load(); // Load the video
+                videoPlayer.muted = false; // Ensure video sound is not muted when played by user
+                // Automatically switch to video mode if an MP4 is loaded
+                displayMode = 'video';
+                document.querySelector('input[name="displayMode"][value="video"]').checked = true;
+            } else {
+                currentMediaElement = new Audio(mediaUrl);
+                currentMediaElement.crossOrigin = 'anonymous';
+                // Automatically switch to visualizer mode if an audio is loaded
+                displayMode = 'visualizer';
+                document.querySelector('input[name="displayMode"][value="visualizer"]').checked = true;
+            }
+
+            // Connect the source to the analyser and then to the audio context's destination
+            // Disconnect previous source if it exists before creating a new one
+            if (source) {
+                source.disconnect();
+            }
+            source = audioContext.createMediaElementSource(currentMediaElement);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            currentMediaElement.volume = volumeControl.value;
+
+            // 3. Define and attach new event listeners
+            currentLoadedMetadataListener = () => {
+                timelineControl.max = currentMediaElement.duration;
+                durationTimeElement.textContent = formatTime(currentMediaElement.duration);
+            };
+            currentTimeUpdateListener = () => {
+                timelineControl.value = currentMediaElement.currentTime;
+                currentTimeElement.textContent = formatTime(currentMediaElement.currentTime);
+            };
+            currentEndedListener = () => {
+                playPauseButton.textContent = 'Play';
+                cancelAnimationFrame(animationFrameId);
+                songInfoElement.classList.add('hidden');
+                updateDisplayModeUI();
+            };
+            currentMediaErrorListener = (e) => {
+                console.error('Media element error:', e);
+                showErrorScreen("Error loading media file. It might be corrupted or unsupported.", "011");
+            };
+
+            currentMediaElement.addEventListener('loadedmetadata', currentLoadedMetadataListener);
+            currentMediaElement.addEventListener('timeupdate', currentTimeUpdateListener);
+            currentMediaElement.addEventListener('ended', currentEndedListener);
+            currentMediaElement.addEventListener('error', currentMediaErrorListener);
+
+
+            // 4. Play the media only after it's ready
+            const playMedia = () => {
+                currentMediaElement.play().then(() => {
+                    playPauseButton.textContent = 'Pause';
+                    if (audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                    currentPlayingIndex = index;
+                    updateQueueListUI();
+                    updateSongInfo(file.title);
+                    songInfoElement.classList.remove('hidden');
+                    updateDisplayModeUI();
+                    drawVisualizer();
+                }).catch(error => {
+                    console.error("Error playing media:", error);
+                    // Check if the error is due to play being interrupted by pause
+                    if (error.name === 'AbortError' || (error.message && error.message.includes('interrupted by a call to pause'))) {
+                        console.warn('Playback interrupted, likely by rapid user interaction or media change.');
+                    } else {
+                        showErrorScreen("A major asset cannot load or the script is not responding correctly, please refer to the README.txt file in the GitHub page.", "010");
+                        playPauseButton.textContent = 'Play';
+                        updateSongInfo("No Song Loaded");
+                        songInfoElement.classList.add('hidden');
+                        updateDisplayModeUI();
+                    }
+                });
+            };
+
+            // For video, wait for 'canplaythrough' or 'loadeddata'
+            // For audio, 'loadedmetadata' is usually sufficient, but canplaythrough is safer.
+            if (currentMediaElement.readyState >= 3) { // HAVE_FUTURE_DATA or HAVE_ENOUGH_DATA
+                playMedia();
+            } else {
+                currentCanPlayThroughListener = () => {
+                    playMedia();
+                    currentMediaElement.removeEventListener('canplaythrough', currentCanPlayThroughListener); // Remove after first play
+                };
+                currentMediaElement.addEventListener('canplaythrough', currentCanPlayThroughListener);
+            }
+        }
+
+        /**
+         * Toggles play/pause state of the media.
+         */
+        function togglePlayPause() {
+            if (!currentMediaElement) {
+                if (uploadedFiles.length > 0) {
+                    loadAndPlayAudio(uploadedFiles[0].url, 0);
+                } else {
+                    showMessageBox("Please upload an audio or video file first.");
+                }
+                return;
+            }
+
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    return currentMediaElement.play(); // Return the promise
+                }).then(() => {
+                    playPauseButton.textContent = 'Pause';
+                    songInfoElement.classList.remove('hidden');
+                    updateDisplayModeUI();
+                    drawVisualizer();
+                }).catch(error => {
+                    if (error.name === 'AbortError' || (error.message && error.message.includes('interrupted by a call to pause'))) {
+                        console.warn('Playback resume interrupted by pause.');
+                    } else {
+                        console.error("Error resuming audio context or playing media:", error);
+                    }
+                    playPauseButton.textContent = 'Play';
+                    songInfoElement.classList.add('hidden');
+                    cancelAnimationFrame(animationFrameId);
+                });
+            } else if (currentMediaElement.paused) {
+                currentMediaElement.play().then(() => { // Return the promise
+                    playPauseButton.textContent = 'Pause';
+                    songInfoElement.classList.remove('hidden');
+                    updateDisplayModeUI();
+                    drawVisualizer();
+                }).catch(error => {
+                    if (error.name === 'AbortError' || (error.message && error.message.includes('interrupted by a call to pause'))) {
+                        console.warn('Playback interrupted by pause.');
+                    } else {
+                        console.error("Error playing media:", error);
+                    }
+                    playPauseButton.textContent = 'Play';
+                    songInfoElement.classList.add('hidden');
+                    cancelAnimationFrame(animationFrameId);
+                });
+            } else {
+                currentMediaElement.pause();
+                playPauseButton.textContent = 'Play';
+                songInfoElement.classList.add('hidden');
+                cancelAnimationFrame(animationFrameId);
+            }
+        }
+
+        /**
+         * Updates the displayed song title.
+         * @param {string} title - The title of the current song.
+         */
+        function updateSongInfo(title) {
+            currentSongTitleElement.textContent = title;
+        }
+
+        /**
+         * Updates the UI based on the current displayMode.
+         */
+        function updateDisplayModeUI() {
+            const currentFile = uploadedFiles[currentPlayingIndex];
+            const isCurrentFileVideo = currentFile ? currentFile.isVideo : false;
+
+            // Hide all default visual elements first
+            videoPlayer.classList.remove('show');
+            canvas.classList.remove('hidden'); // Assume canvas is generally visible for drawing
+            canvas.style.backgroundColor = 'transparent'; // Reset to transparent for all cases
+            canvas.style.background = 'none'; // Remove gradient from CSS for all cases
+            notVideoMessageElement.classList.add('hidden'); // Hide the "Not a video" message by default
+
+            if (displayMode === 'video') {
+                if (isCurrentFileVideo) {
+                    // Video mode selected, and current file IS a video
+                    videoPlayer.classList.add('show');
+                    canvas.classList.add('hidden'); // Hide canvas completely
+                } else {
+                    // Video mode selected, but current file is NOT a video (e.g., MP3)
+                    videoPlayer.classList.remove('show'); // Ensure video player is hidden
+                    canvas.classList.add('hidden'); // Hide the visualizer canvas
+                    notVideoMessageElement.classList.remove('hidden'); // Show the "Not a video" message
+                }
+            } else { // displayMode === 'visualizer'
+                videoPlayer.classList.remove('show'); // Ensure video player is hidden
+                canvas.classList.remove('hidden'); // Ensure visualizer canvas is visible
+                // Reapply CSS gradient if no custom background image is uploaded
+                if (!uploadedBackgroundImage) {
+                    canvas.style.background = 'radial-gradient(circle at center, #2a4365 0%, #800020 50%, #4a0000 100%)';
+                }
+            }
+
+            // If canvas is hidden, stop animation to save resources
+            if (canvas.classList.contains('hidden') && animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null; // Clear the ID
+            } else if (!canvas.classList.contains('hidden') && !animationFrameId && currentMediaElement && !currentMediaElement.paused) {
+                // If canvas becomes visible and media is playing but animation stopped, restart it
+                drawVisualizer();
+            }
+        }
+
+        /**
+         * Draws the audio visualization on the canvas based on the selected style.
+         */
+        function drawVisualizer() {
+            // Only draw if canvas is visible
+            if (canvas.classList.contains('hidden')) {
+                animationFrameId = null; // Ensure animation stops
+                return;
+            }
+
+            animationFrameId = requestAnimationFrame(drawVisualizer);
+
+            // Get frequency data
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate average amplitude for particle speed
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+            }
+            const averageAmplitude = sum / bufferLength;
+
+            // Clear the canvas
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background image if uploaded AND not in video mode (handled by CSS if no image)
+            if (uploadedBackgroundImage && displayMode === 'visualizer') {
+                canvasCtx.drawImage(uploadedBackgroundImage, 0, 0, canvas.width, canvas.height);
+            }
+
+            // Draw background particles ONLY if not in video mode
+            if (displayMode === 'visualizer') {
+                drawBackgroundParticles(averageAmplitude);
+            }
+
+
+            // Then draw the main visualizer elements ONLY if in visualizer mode
+            if (displayMode === 'visualizer') {
+                if (visualizerStyle === 'bars') {
+                    drawBars();
+                } else if (visualizerStyle === 'circles') {
+                    drawCircles();
+                }
+            }
+            // Visualizers are intentionally not drawn in video mode here.
+        }
+
+        /**
+         * Draws the bar graph visualizer.
+         */
+        function drawBars() {
+            const barWidth = (canvas.width / bufferLength) * 2.5;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = dataArray[i] / 2; // Scale height for better visualization
+
+                // Gradient colors for bars
+                const gradient = canvasCtx.createLinearGradient(0, canvas.height, 0, canvas.height - barHeight);
+                gradient.addColorStop(0, barColor1Input.value);
+                gradient.addColorStop(1, barColor2Input.value);
+
+                canvasCtx.fillStyle = gradient;
+                canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+                x += barWidth + 1; // Add 1 pixel gap between bars
+            }
+        }
+
+        /**
+         * Draws the circle visualizer (single pulsating circle).
+         */
+        function drawCircles() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Calculate average amplitude
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+            }
+            const averageAmplitude = sum / bufferLength;
+
+            // Base radius and max pulsation
+            const baseRadius = Math.min(canvas.width, canvas.height) / 8; // Smaller base radius
+            const maxPulsation = Math.min(canvas.width, canvas.height) / 4; // Larger pulsation range
+
+            // Calculate current radius based on average amplitude
+            // Scale averageAmplitude (0-255) to a pulsation factor (0-1)
+            const pulsationFactor = averageAmplitude / 255;
+            const currentRadius = baseRadius + (pulsationFactor * maxPulsation);
+
+            // Create a radial gradient for the main circle using customizable colors
+            const gradient = canvasCtx.createRadialGradient(centerX, centerY, currentRadius * 0.1, centerX, centerY, currentRadius);
+            gradient.addColorStop(0, circleColor1Input.value);
+            gradient.addColorStop(0.5, circleColor2Input.value);
+            gradient.addColorStop(1, circleColor3Input.value);
+
+            canvasCtx.fillStyle = gradient;
+            canvasCtx.beginPath();
+            canvasCtx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
+            canvasCtx.fill();
+
+            // Add multiple concentric rings for a more dynamic effect
+            for (let i = 0; i < 5; i++) {
+                const ringRadius = currentRadius * (1 + (i * 0.1));
+                const ringAlpha = 0.5 - (i * 0.1); // Fade out rings
+                if (ringAlpha <= 0) continue;
+
+                // Use customizable colors for rings, slightly adjusted
+                canvasCtx.strokeStyle = `hsla(${averageAmplitude * 1.5 + (i * 30)}, 100%, 70%, ${ringAlpha})`;
+                canvasCtx.lineWidth = 2 + (i * 0.5);
+                canvasCtx.beginPath();
+                canvasCtx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
+                canvasCtx.stroke();
+            }
+        }
+
+        /**
+         * Draws and updates background particles, making them float towards the screen.
+         * @param {number} amplitude - The current average audio amplitude (0-255).
+         */
+        function drawBackgroundParticles(amplitude) {
+            const maxBackgroundParticles = 150; // Limit the number of background particles
+
+            // Scale amplitude to a factor for particle speed
+            const speedFactor = 0.01 + (amplitude / 255) * 0.5; // Base speed + amplitude-based boost
+
+            // Update and draw existing particles
+            for (let i = backgroundParticles.length - 1; i >= 0; i--) {
+                const p = backgroundParticles[i];
+
+                // Move particles towards the screen (simulate by increasing size and alpha)
+                p.radius += 0.05 * speedFactor; // Increase size based on speedFactor
+                p.alpha += 0.005 * speedFactor; // Increase alpha based on speedFactor
+
+                // Move particles slightly outwards from center for a floating effect
+                const dx = p.x - canvas.width / 2;
+                const dy = p.y - canvas.height / 2;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+
+                // Push them slightly away from the center
+                p.x += Math.cos(angle) * 0.5 * speedFactor;
+                p.y += Math.sin(angle) * 0.5 * speedFactor;
+
+
+                // Remove if too large, fully visible, or off-screen
+                if (p.alpha >= 1 || p.radius >= 5 || p.x < -10 || p.x > canvas.width + 10 || p.y < -10 || p.y > canvas.height + 10) {
+                    backgroundParticles.splice(i, 1);
+                    // Re-spawn new particle at a random position with initial properties
+                    backgroundParticles.push(createBackgroundParticle());
+                    continue;
+                }
+
+                // Draw particle
+                canvasCtx.save();
+                canvasCtx.globalAlpha = p.alpha;
+                canvasCtx.fillStyle = p.color; // White particles
+                canvasCtx.beginPath();
+                canvasCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                canvasCtx.fill();
+                canvasCtx.restore();
+            }
+
+            // Spawn new particles if below max limit
+            while (backgroundParticles.length < maxBackgroundParticles) {
+                backgroundParticles.push(createBackgroundParticle());
+            }
+        }
+
+        /**
+         * Creates a new background particle with initial properties.
+         * @returns {object} A new particle object.
+         */
+        function createBackgroundParticle() {
+            // Spawn particles randomly across the canvas
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const initialRadius = 0.5 + Math.random() * 1.5; // Smaller initial size
+            const initialAlpha = 0.1 + Math.random() * 0.2; // Very faint initially
+
+            return {
+                x: x,
+                y: y,
+                radius: initialRadius,
+                color: `rgba(255, 255, 255, 1)`, // White color (alpha controlled by p.alpha)
+                vx: (Math.random() - 0.5) * 0.2, // Small random x velocity
+                vy: (Math.random() - 0.5) * 0.2, // Small random y velocity
+                alpha: initialAlpha
+            };
+        }
+
+
+        /**
+         * Handles audio/video file input change event.
+         * @param {Event} event - The change event.
+         */
+        function handleAudioFileChange(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const mediaUrl = e.target.result;
+                    const newIndex = uploadedFiles.length;
+                    const isVideo = file.type.startsWith('video/'); // Check if it's a video file
+                    uploadedFiles.push({ name: file.name, url: mediaUrl, title: file.name.split('.').slice(0, -1).join('.'), isVideo: isVideo });
+                    updateQueueListUI();
+                    loadAndPlayAudio(mediaUrl, newIndex); // Play the newly uploaded media
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        /**
+         * Handles background image file input change event.
+         * @param {Event} event - The change event.
+         */
+        function handleBackgroundFileChange(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = () => {
+                        uploadedBackgroundImage = img;
+                        // Trigger a redraw to show the new background
+                        if (currentMediaElement && !currentMediaElement.paused) {
+                            drawVisualizer();
+                        } else {
+                            // If not playing, clear and redraw canvas to show background
+                            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+                            if (uploadedBackgroundImage) {
+                                canvasCtx.drawImage(uploadedBackgroundImage, 0, 0, canvas.width, canvas.height);
+                            }
+                            drawBackgroundParticles(0); // Redraw particles on static background, pass 0 amplitude
+                        }
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        /**
+         * Clears the uploaded background image and reverts to CSS gradient.
+         */
+        function clearBackgroundImage() {
+            uploadedBackgroundImage = null;
+            // Trigger a redraw to show the CSS background again
+            if (currentMediaElement && !currentMediaElement.paused) {
+                drawVisualizer();
+            } else {
+                canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+                // Canvas background is now handled by CSS, but particles need redraw
+                drawBackgroundParticles(0); // Redraw particles on static background, pass 0 amplitude
+            }
+            updateDisplayModeUI(); // Ensure background is correctly set after clearing image
+        }
+
+
+        /**
+         * Resets all application data and UI to initial state.
+         */
+        function resetAllData() {
+            // Stop current media element if playing
+            if (currentMediaElement) {
+                currentMediaElement.pause();
+                currentMediaElement = null; // Clear reference
+                if (videoPlayer) {
+                    videoPlayer.src = ''; // Clear video source
+                    videoPlayer.load();
+                }
+            }
+            // Clear uploaded files
+            uploadedFiles.length = 0;
+            currentPlayingIndex = -1;
+            backgroundParticles = []; // Clear background particles on reset
+            clearBackgroundImage(); // Clear any uploaded background image
+            updateQueueListUI(); // This will re-add the default song
+            updateSongInfo("No Song Loaded");
+            songInfoElement.classList.add('hidden'); // Hide song title on reset
+            playPauseButton.textContent = 'Play';
+            cancelAnimationFrame(animationFrameId); // Stop visualizer
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+            showMessageBox("All data has been reset.");
+            // Reset display mode to visualizer
+            displayMode = 'visualizer';
+            document.querySelector('input[name="displayMode"][value="visualizer"]').checked = true;
+            updateDisplayModeUI(); // Ensure background is correctly set after reset
+
+            // Hide debug menu if it was open
+            debugMenu.classList.add('hidden');
+            errorSelectionMenu.classList.add('hidden'); // Hide error selection menu too
+            debugModeButton.classList.add('hidden');
+            sidebarToggleClickCount = 0; // Reset click count
+        }
+
+        /**
+         * Updates the queue list in the sidebar with uploaded songs.
+         */
+        function updateQueueListUI() {
+            queueList.innerHTML = ''; // Clear existing list
+
+            // No default song added here, only uploaded files
+            uploadedFiles.forEach((file, index) => {
+                const listItem = document.createElement('li');
+                listItem.textContent = file.name;
+                listItem.classList.add('p-2', 'rounded-md');
+                if (index === currentPlayingIndex) {
+                    listItem.classList.add('active');
+                }
+                listItem.dataset.index = index; // Store index for easy access
+                listItem.addEventListener('click', () => {
+                    loadAndPlayAudio(file.url, index);
+                });
+                queueList.appendChild(listItem);
+            });
+        }
+
+        /**
+         * Toggles the sidebar visibility.
+         */
+        function toggleSidebar() {
+            sidebar.classList.toggle('open');
+            if (sidebar.classList.contains('open')) {
+                toggleIcon.textContent = '✕'; // Close icon
+            } else {
+                toggleIcon.textContent = '☰'; // Hamburger icon
+            }
+        }
+
+        /**
+         * Shows a specific tutorial step.
+         * @param {number} index - The index of the tutorial step to show.
+         */
+        function showTutorialStep(index) {
+            tutorialSteps.forEach((step, i) => {
+                if (i === index) {
+                    step.classList.add('active');
+                } else {
+                    step.classList.remove('active');
+                }
+            });
+
+            if (index === tutorialSteps.length - 1) {
+                nextTutorialButton.textContent = 'Get Started!';
+                skipTutorialButton.style.display = 'none'; // Hide skip button on last step
+            } else {
+                nextTutorialButton.textContent = 'Next';
+                skipTutorialButton.style.display = 'inline-block'; // Show skip button
+            }
+        }
+
+        /**
+         * Advances to the next tutorial step or ends the tutorial if it's the last step.
+         */
+        function nextTutorialStep() {
+            if (currentTutorialStepIndex < tutorialSteps.length - 1) {
+                currentTutorialStepIndex++;
+                showTutorialStep(currentTutorialStepIndex);
+            } else {
+                endTutorialAnimations();
+            }
+        }
+
+        /**
+         * Triggers the end-of-tutorial animations and shows the main UI.
+         */
+        function endTutorialAnimations() {
+            // Apply shake animation to the main content (canvas)
+            const mainContent = document.querySelector('.main-content');
+            mainContent.classList.add('shake-active');
+
+            // After shake, slide up UI elements
+            setTimeout(() => {
+                mainContent.classList.remove('shake-active'); // Remove shake class
+
+                tutorialOverlay.style.opacity = '0';
+                tutorialOverlay.style.visibility = 'hidden';
+
+                sidebar.classList.add('slide-in');
+                // Removed sidebar.classList.add('open'); - sidebar will not auto-open
+                audioControls.classList.add('slide-in');
+
+                localStorage.setItem('tutorialSeen', 'true'); // Mark tutorial as seen
+
+                // Resume visualizer if media is playing
+                if (currentMediaElement && !currentMediaElement.paused) {
+                    drawVisualizer();
+                }
+            }, 600); // Duration of the shake animation
+        }
+
+
+        // Event Listeners
+        window.onload = () => {
+            canvas = document.getElementById('visualizerCanvas');
+            canvasCtx = canvas.getContext('2d');
+            audioControls = document.querySelector('.audio-controls'); // Assign value to globally declared variable
+
+            // Set canvas dimensions to fill the parent container
+            const resizeCanvas = () => {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+            };
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas(); // Initial resize
+
+            // Load the default song into the queue, but don't autoplay
+            updateQueueListUI(); // This will now start with an empty queue
+            updateSongInfo("No Song Loaded"); // Initial display for song info
+            songInfoElement.classList.add('hidden'); // Hide song title initially
+
+            // Check if tutorial has been seen
+            const tutorialSeen = localStorage.getItem('tutorialSeen');
+            if (!tutorialSeen) {
+                tutorialOverlay.classList.add('show');
+                showTutorialStep(currentTutorialStepIndex);
+                // Hide main UI elements initially
+                sidebar.classList.remove('slide-in');
+                sidebar.classList.remove('open'); // Ensure sidebar is closed initially
+                audioControls.classList.remove('slide-in');
+            } else {
+                tutorialOverlay.style.display = 'none'; // Hide tutorial if seen
+                // Show main UI elements immediately if tutorial seen
+                sidebar.classList.add('slide-in');
+                // sidebar.classList.add('open'); // Do not auto-open sidebar
+                audioControls.classList.add('slide-in');
+                updateDisplayModeUI(); // Initial UI update for display mode
+            }
+
+
+            sidebarToggleButton.addEventListener('click', () => {
+                toggleSidebar(); // Existing sidebar toggle logic
+                sidebarToggleClickCount++;
+                if (sidebarToggleClickCount >= DEBUG_ACTIVATION_CLICKS) {
+                    debugModeButton.classList.remove('hidden');
+                }
+            });
+            audioFileInput.addEventListener('change', handleAudioFileChange);
+            playPauseButton.addEventListener('click', togglePlayPause);
+            volumeControl.addEventListener('input', (e) => {
+                if (currentMediaElement) {
+                    currentMediaElement.volume = e.target.value;
+                }
+            });
+            messageBoxCloseButton.addEventListener('click', hideMessageBox);
+
+            // Timeline control listener
+            timelineControl.addEventListener('input', (e) => {
+                if (currentMediaElement) {
+                    currentMediaElement.currentTime = e.target.value;
+                }
+            });
+
+            // Add event listener for visualizer style radio buttons
+            visualizerStyleRadios.forEach(radio => {
+                radio.addEventListener('change', (event) => {
+                    visualizerStyle = event.target.value;
+                    // If media is playing, restart visualization with new style
+                    if (currentMediaElement && !currentMediaElement.paused) {
+                        cancelAnimationFrame(animationFrameId); // Stop current animation
+                        drawVisualizer(); // Start new animation
+                    }
+                });
+            });
+
+            // Event Listeners for Display Mode Radios
+            displayModeRadios.forEach(radio => {
+                radio.addEventListener('change', (event) => {
+                    displayMode = event.target.value;
+                    updateDisplayModeUI();
+                    // If switching to video mode, and a video is loaded, ensure it plays
+                    const currentFile = uploadedFiles[currentPlayingIndex];
+                    if (displayMode === 'video' && currentFile && currentFile.isVideo && currentMediaElement === videoPlayer && currentMediaElement.paused) {
+                        currentMediaElement.play();
+                    }
+                    // If switching to visualizer mode, and video was playing, pause it
+                    if (displayMode === 'visualizer' && currentMediaElement === videoPlayer && !currentMediaElement.paused) {
+                        currentMediaElement.pause();
+                    }
+                });
+            });
+
+            // Event Listeners for Error Screen and Debug Mode
+            errorScreenCloseButton.addEventListener('click', hideErrorScreen);
+
+            debugModeButton.addEventListener('click', () => {
+                debugMenu.classList.toggle('hidden');
+                errorSelectionMenu.classList.add('hidden'); // Ensure error selection menu is hidden when debug menu is toggled
+            });
+
+            resetDataButton.addEventListener('click', resetAllData);
+
+            showErrorSelectionButton.addEventListener('click', () => {
+                debugMenu.classList.add('hidden'); // Hide main debug menu
+                errorSelectionMenu.classList.remove('hidden'); // Show error selection menu
+            });
+
+            showError010Button.addEventListener('click', () => {
+                showErrorScreen("A major asset cannot load or the script is not responding correctly, please refer to the README.txt file in the GitHub page.", "010");
+            });
+
+            backToDebugMenuButton.addEventListener('click', () => {
+                errorSelectionMenu.classList.add('hidden'); // Hide error selection menu
+                debugMenu.classList.remove('hidden'); // Show main debug menu
+            });
+
+            // Event Listeners for Visualizer Customization
+            backgroundFileInput.addEventListener('change', handleBackgroundFileChange);
+            clearBackgroundButton.addEventListener('click', clearBackgroundImage);
+
+            barColor1Input.addEventListener('input', () => {
+                if (currentMediaElement && !currentMediaElement.paused && visualizerStyle === 'bars') {
+                    drawVisualizer();
+                }
+            });
+            barColor2Input.addEventListener('input', () => {
+                if (currentMediaElement && !currentMediaElement.paused && visualizerStyle === 'bars') {
+                    drawVisualizer();
+                }
+            });
+            circleColor1Input.addEventListener('input', () => {
+                if (currentMediaElement && !currentMediaElement.paused && visualizerStyle === 'circles') {
+                    drawVisualizer();
+                }
+            });
+            circleColor2Input.addEventListener('input', () => {
+                if (currentMediaElement && !currentMediaElement.paused && visualizerStyle === 'circles') {
+                    drawVisualizer();
+                }
+            });
+            circleColor3Input.addEventListener('input', () => {
+                if (currentMediaElement && !currentMediaElement.paused && visualizerStyle === 'circles') {
+                    drawVisualizer();
+                }
+            });
+
+            // Tutorial button listeners
+            nextTutorialButton.addEventListener('click', nextTutorialStep);
+            skipTutorialButton.addEventListener('click', endTutorialAnimations);
+
+        };
+
+        // Ensure audio context resumes on user interaction for autoplay policies
+        // This listener is crucial for browsers that suspend AudioContext until user interaction
+        document.addEventListener('click', () => {
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    console.log('AudioContext resumed successfully');
+                }).catch(error => {
+                    console.error('Error resuming AudioContext:', error);
+                });
+            }
+        }, { once: true }); // Only trigger once
+    </script>
+</body>
+</html>
